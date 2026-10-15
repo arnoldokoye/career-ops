@@ -12,6 +12,28 @@ Ranked by how ready it is to ship as a good PR for Arnold, then by fit (scoring,
 | 4 | #5134 web: tie each evaluation's report to the run that wrote it | S | Probably fixed already; test-only PR or a close comment |
 | 5 | #4798 atsLint/auditAts: partition ATS rules into structural and content-dependent | M/L | Design question first |
 
+## Update from a second pass (cloud session, same day)
+
+Two more branches are pushed to the fork, each with a PR draft in this branch:
+
+| Issue | Branch | Draft | Status |
+|---|---|---|---|
+| #5125 Fact gate: unlisted German count noun | `fix/5125-fact-gate-unlisted-german-count` | `PR_DRAFT_5125.md` | Implemented; suite green on Node 24 |
+| #4957 Windows: Go and Node compute different tracker lock dirs | `fix/4957-windows-short-name-lock-dir` | `PR_DRAFT_4957.md` | Implemented; green on Linux, **Windows not yet verified** |
+
+**#5125, and how it differs from the plan in section 3 below.** The branch gates the new warning on *a recognized German count noun*, not on `looksEnglish()`. The reason: `looksEnglish()` reads the issue's own repro, "Leitete 45 Spezialisten in 3 Standorten.", as English, because it has no German function word from its list. A `looksEnglish()` gate would leave the exact reported case silent. Gating on the German noun list keeps every English document unaffected, which covers the policy concern in section 3: no new warnings on English CVs. French stays out of scope because there is no French noun list yet, so the documented "coincidental coverage" blind spot is unchanged. It is still worth posting the claim comment in `PR_DRAFT_5125.md` before opening the PR, since that comment states the approach.
+
+**#4957 (new candidate).** It is not in the table above. The Node side now uses `realpathSync.native` on Windows, which expands 8.3 short names like Go's `EvalSymlinks`. The tracker path, the temp root, and the web's resolver mirror all use it. The Go mirror test's Windows skip is removed, so the `windows-latest` CI leg is the proof. Run that leg inside the fork before opening upstream; the steps are in `PR_DRAFT_4957.md`. Files: `path-resolver.mjs`, `tracker-utils.mjs`, `web/src/lib/core/tracker-files.mjs`, `dashboard/internal/data/tracker_lock_mirror_test.go`. Size S. Go was available in this session: `go test ./...` passes on Linux.
+
+Other candidates from the second pass, not implemented:
+
+- **#4320** scan: an opt-in `max_posting_age_scope: all | job_boards` that exempts a company's own ATS board from the age cut. M, feature. The docs alternative (#4372) and recording the drops (#4321) already merged, so only the key is left. Ask the maintainer the issue's open question before coding.
+- **#5124** reconcile Pending rows that are already in the tracker. M. rubicon (member) offered to PR it once assigned, so it is not free without a maintainer's go-ahead.
+
+Also checked and left out in the second pass: #3825 (claimed by euskode in comments), #4832 (split across several contributors), #5290 (author offers the PR; i18n), #4038 (both halves already on main).
+
+Local test note from this session: on Node 22.22, `tests/test-all-jobs.test.mjs:121` (a harness self-test) fails on untouched `main`. It passes on Node 24, and the full `--quick` suite on Node 24 passes on both branches (15089 passed, 0 failed).
+
 ---
 
 ## 1. #5300 Today lists a flagged posting as Recommended
