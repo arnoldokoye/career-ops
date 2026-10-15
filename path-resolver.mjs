@@ -43,10 +43,32 @@ export function getCareerOpsRoot() {
 export function canonicalizeTrackerPath(path) {
   const absolutePath = resolve(path);
   try {
-    return realpathSync(absolutePath);
+    return canonicalRealpath(absolutePath);
   } catch {
     return absolutePath;
   }
+}
+
+/**
+ * realpathSync, but on Windows the native one, which expands 8.3 short names
+ * (`C:\Users\RUNNER~1`) to their long form. The JS realpath leaves them as
+ * written, while the Go dashboard's filepath.EvalSymlinks expands them, so the
+ * two hashed different spellings of one tracker and took different locks
+ * (#4957). Falls back to the JS realpath if the native call fails. Throws, like
+ * realpathSync, when the path does not exist.
+ *
+ * @param {string} path
+ * @returns {string}
+ */
+export function canonicalRealpath(path) {
+  if (process.platform === 'win32') {
+    try {
+      return realpathSync.native(path);
+    } catch {
+      // fall through to the JS realpath
+    }
+  }
+  return realpathSync(path);
 }
 
 /**

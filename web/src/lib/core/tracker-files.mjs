@@ -12,10 +12,23 @@ export function resolveTrackerPath(root) {
       : path.join(root, "applications.md")
   ));
   try {
-    return fs.realpathSync(candidate);
+    return canonicalRealpath(candidate);
   } catch {
     return candidate;
   }
+}
+
+// Mirror of canonicalRealpath in path-resolver.mjs: the native realpath on
+// Windows expands 8.3 short names, as the core resolver does (#4957).
+function canonicalRealpath(candidate) {
+  if (process.platform === "win32") {
+    try {
+      return fs.realpathSync.native(candidate);
+    } catch {
+      // fall through to the JS realpath
+    }
+  }
+  return fs.realpathSync(candidate);
 }
 
 export function readTrackerFile(root, sibling) {

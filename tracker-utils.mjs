@@ -259,7 +259,7 @@ export function resolvePdfIndexPath(trackerPath) {
  * @param {string} path - Raw tracker path from config, env, or the default.
  * @returns {string} Absolute canonical path when the file exists, else resolved path.
  */
-import { canonicalizeTrackerPath, rawTrackerPath } from './path-resolver.mjs';
+import { canonicalizeTrackerPath, canonicalRealpath, rawTrackerPath } from './path-resolver.mjs';
 export { canonicalizeTrackerPath };
 
 /**
@@ -358,14 +358,14 @@ export function pathIsInsideCanonical(childPath, parentDir) {
  */
 export function trackerLockDirFor(appsFile) {
   const lockKey = createHash('sha256').update(appsFile).digest('hex').slice(0, 16);
-  const tmpRoot = realpathSync(tmpdir());
+  const tmpRoot = canonicalRealpath(tmpdir());
   const fallback = join(tmpRoot, `career-ops-merge-tracker-${lockKey}.lock`);
   const envValue = process.env.CAREER_OPS_TRACKER_LOCK;
   if (!envValue || !isAbsolute(envValue)) return fallback;
 
   const candidate = resolve(envValue);
   const parentDir = dirname(candidate);
-  const canonicalParent = existsSync(parentDir) ? realpathSync(parentDir) : resolve(parentDir);
+  const canonicalParent = existsSync(parentDir) ? canonicalRealpath(parentDir) : resolve(parentDir);
   if (!pathIsInside(canonicalParent, tmpRoot)) return fallback;
   if (!basename(candidate).startsWith('career-ops-merge-tracker-')) return fallback;
   return candidate;
