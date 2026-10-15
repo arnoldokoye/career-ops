@@ -62,19 +62,26 @@ export function pickAwaitingDecision(applications, scoreOf, limit = 6) {
     .slice(0, limit);
 }
 
-const AWAITING_GROUPS = ["Recommended", "Below the apply line", "Not scored yet"];
+const AWAITING_GROUPS = ["Recommended", "Check the posting first", "Below the apply line", "Not scored yet"];
 
 /**
  * Splits the ranked queue into the groups the Today page renders, keeping the
  * order inside each group. A row with no score has not been judged against the
  * apply line, so it gets its own group instead of "Below the apply line".
  *
+ * The legitimacy tier lives in the report header, not in the tracker row, so
+ * the caller passes a lookup for it. With it, a flagged posting above the line
+ * lands in "Check the posting first", the label the report page shows for the
+ * same row, instead of "Recommended".
+ *
  * @template {{score?: string}} T
  * @param {T[]} awaiting  output of pickAwaitingDecision
+ * @param {(row: T) => string | null | undefined} [legitimacyOf]  the row's Block G tier, if known
  * @returns {[string, T[]][]}  only the non-empty groups, in display order
  */
-export function groupAwaiting(awaiting) {
+export function groupAwaiting(awaiting, legitimacyOf = () => undefined) {
+  const labelOf = (/** @type {T} */ a) => applyLineLabel(a.score, legitimacyOf(a)) ?? "Not scored yet";
   return AWAITING_GROUPS
-    .map((label) => /** @type {[string, T[]]} */ ([label, awaiting.filter((a) => (applyLineLabel(a.score) ?? "Not scored yet") === label)]))
+    .map((label) => /** @type {[string, T[]]} */ ([label, awaiting.filter((a) => labelOf(a) === label)]))
     .filter(([, group]) => group.length > 0);
 }

@@ -137,3 +137,32 @@ test("an empty group is left out", () => {
     ["Not scored yet"],
   );
 });
+
+test("a flagged posting above the line is not Recommended, matching the report page", () => {
+  // #5300: Today grouped by score alone, so a 4.5 marked "Proceed with
+  // Caution" sat under Recommended while its report said "Check the posting
+  // first". The tier comes from the report header, so the caller supplies it.
+  const rows = [row("2026-08-04", "4.5/5"), row("2026-08-03", "4.2/5"), row("2026-08-02", "4.8/5"), row("2026-08-01", "3.1/5")];
+  const tiers = { "2026-08-04": "Proceed with Caution", "2026-08-03": "High Confidence", "2026-08-02": "Suspicious", "2026-08-01": "Suspicious" };
+  assert.deepEqual(
+    groupAwaiting(pickAwaitingDecision(rows, scoreOf), (r) => tiers[r.date]).map(([label, group]) => [label, group.map((r) => r.date)]),
+    [
+      ["Recommended", ["2026-08-03"]],
+      ["Check the posting first", ["2026-08-02", "2026-08-04"]],
+      ["Below the apply line", ["2026-08-01"]],
+    ],
+  );
+});
+
+test("a row with no known legitimacy is grouped by score alone", () => {
+  // Older reports carry no Legitimacy line, and a row may have no report at all.
+  const rows = [row("2026-08-02", "4.5/5"), row("2026-08-01", "4.1/5")];
+  assert.deepEqual(
+    groupAwaiting(rows, () => undefined).map(([label, group]) => [label, group.length]),
+    [["Recommended", 2]],
+  );
+  assert.deepEqual(
+    groupAwaiting(rows).map(([label, group]) => [label, group.length]),
+    [["Recommended", 2]],
+  );
+});
