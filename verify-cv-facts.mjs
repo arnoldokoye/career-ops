@@ -125,6 +125,19 @@ const ATTRIBUTION_STOP_WORDS = new Set([
   'on', 'our', 'oversaw', 'partnered', 'programmed', 'supervised', 'the', 'through',
   'to', 'vendor', 'vendors', 'with', 'wrote',
 ]);
+// The German count nouns, kept apart from METRIC_NOUNS so diagnoseCoverage can
+// tell that a document is German from the nouns it recognised (#5125). Only
+// German words belong here: 'posts' is English and stays in METRIC_NOUNS.
+const GERMAN_METRIC_NOUNS = [
+  'mitarbeiter', 'mitarbeitende', 'mitarbeitenden', 'kunden', 'projekte',
+  'projekten', 'standorte', 'standorten', 'zertifikate', 'zertifikaten',
+  'blogbeiträge', 'blogbeiträgen', 'beiträge', 'beiträgen',
+  'werkzeuge', 'werkzeugen',
+  'mitarbeitern', 'mitarbeiterinnen', 'teammitglieder', 'teammitgliedern',
+  'nutzer', 'nutzern', 'entwickler', 'entwicklern', 'entwicklerinnen',
+  'ingenieure', 'ingenieuren', 'ingenieurinnen',
+];
+const GERMAN_METRIC_NOUN_SET = new Set(GERMAN_METRIC_NOUNS);
 const METRIC_NOUNS = [
   'users', 'customers', 'clients', 'employees', 'engineers', 'teams', 'companies',
   'partners', 'organizations', 'organisations', 'brands', 'countries',
@@ -168,13 +181,7 @@ const METRIC_NOUNS = [
   // deliberately left out: sources state durations as table cells ("Day
   // Streak | 316") far more often than as "316 Tage", so adding them would fail
   // truthful documents without catching the inflation class this gate targets.
-  'mitarbeiter', 'mitarbeitende', 'mitarbeitenden', 'kunden', 'projekte',
-  'projekten', 'standorte', 'standorten', 'zertifikate', 'zertifikaten',
-  'blogbeiträge', 'blogbeiträgen', 'beiträge', 'beiträgen', 'posts',
-  'werkzeuge', 'werkzeugen',
-  'mitarbeitern', 'mitarbeiterinnen', 'teammitglieder', 'teammitgliedern',
-  'nutzer', 'nutzern', 'entwickler', 'entwicklern', 'entwicklerinnen',
-  'ingenieure', 'ingenieuren', 'ingenieurinnen',
+  ...GERMAN_METRIC_NOUNS, 'posts',
 ];
 // How many words may sit between a number and the noun it counts. The same
 // regex parses the generated CV and the sources, so the window is symmetric by
@@ -1588,10 +1595,11 @@ const GENERIC_COUNT_RE = new RegExp(
 const YEAR_LIKE = /^(?:19|20)\d{2}$/;
 
 /**
- * Count-shaped spans in `text`, whatever language it is written in.
+ * Count-shaped spans in `text`, whatever language it is written in, each with
+ * the offset of its number in the stripped text.
  *
  * @param {string} text
- * @returns {string[]}
+ * @returns {{text: string, at: number}[]}
  */
 function countShapedSpans(text) {
   const clean = stripMarkup(String(text ?? ''));
@@ -1615,7 +1623,7 @@ function countShapedSpans(text) {
     // position, not the span's — the span starts at the number either way, but
     // a currency match starts one character earlier, at the symbol.
     if (alreadyChecked(m.index) || alreadyChecked(m.index + m[0].indexOf(m[1]))) continue;
-    out.push(m[0].trim());
+    out.push({ text: m[0].trim(), at: m.index });
   }
   return out;
 }
@@ -1653,6 +1661,13 @@ function countShapedSpans(text) {
  * the language it was written in. Under-reporting is the right direction for a
  * signal added to a gate every generated document already runs.
  *
+ * One exception (#5125): a recognised German count. The German list is short,
+ * so reading one German count says little about the rest: "Leitete 45
+ * Spezialisten in 3 Standorten" checked "3 Standorten" and reported nothing
+ * about "45 Spezialisten". In that case every count-shaped span the extractor
+ * did not read is reported. English documents are unaffected, since they have
+ * no German noun to trigger it.
+ *
  * TWO KNOWN BLIND SPOTS, stated rather than implied:
  *
  *   - Coincidental coverage. French "3 sites" matches the English noun, so one
@@ -1683,7 +1698,7 @@ export function diagnoseCoverage(targetText) {
   // English-only" -- a false warn blaming the lexicon for counts it had read fine.
   COUNT_CLAIM_RE.lastIndex = 0;
   const recognized = [...stripMarkup(String(targetText ?? '')).matchAll(COUNT_CLAIM_RE)];
-  if (recognized.length > 0) return null;
+  if (recognized.length > 0) return diagnoseGermanCoverage(spans, recognized);
   return {
     reason: 'no-count-claims-recognized',
     message:
@@ -1691,7 +1706,31 @@ export function diagnoseCoverage(targetText) {
       'list is English-only — so no count in this document was checked against your sources. ' +
       'Percentages, currency and multipliers were still checked. Verify the counts by hand, or add ' +
       'them to allow_metrics in config/cv-facts.json once confirmed.',
-    spans,
+    spans: spans.map(span => span.text),
+  };
+}
+
+/**
+ * The partial-coverage case of diagnoseCoverage: a German document where the
+ * extractor read some counts. Reports the count-shaped spans whose number no
+ * recognised claim starts at, or null when there are none.
+ *
+ * @param {{text: string, at: number}[]} spans
+ * @param {RegExpMatchArray[]} recognized raw COUNT_CLAIM_RE matches
+ * @returns {{reason: string, message: string, spans: string[]}|null}
+ */
+function diagnoseGermanCoverage(spans, recognized) {
+  if (!recognized.some(match => GERMAN_METRIC_NOUN_SET.has(match[2].toLowerCase()))) return null;
+  const read = new Set(recognized.map(match => match.index));
+  const unread = spans.filter(span => !read.has(span.at)).map(span => span.text);
+  if (!unread.length) return null;
+  return {
+    reason: 'count-nouns-not-recognized',
+    message:
+      `Some counts in this document were checked against your sources, but ${unread.length} count-like ` +
+      'claim(s) use a noun outside the German count-noun list and were not. Verify them by hand, or add ' +
+      'them to allow_metrics in config/cv-facts.json once confirmed.',
+    spans: unread,
   };
 }
 

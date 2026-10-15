@@ -111,21 +111,35 @@ test('German counts are read by the lexicon, so an inflation blocks', () => {
   assert.deepEqual([...ok.invented], []);
 });
 
-test('unlisted noun next to a listed one remains unreported — remaining gap (#5125)', () => {
-  // When a line mixes an unlisted noun with a listed one, the listed match
-  // silences the coverage warning while the unlisted noun stays unchecked (#5125).
+test('an unlisted German noun next to a listed one is reported as unchecked (#5125)', () => {
+  // The listed noun used to silence the coverage warning, so "45 Spezialisten"
+  // was neither checked nor reported. The listed count is still checked, and
+  // the unlisted one is now named in the coverage warning.
   const r = verifyFacts('Leitete 45 Spezialisten in 3 Standorten.', BARE);
   assert.equal(r.verdict, 'block');
   assert.deepEqual([...r.invented], ['3 locations']);
-  assert.equal(r.coverage, null);
+  assert.equal(r.coverage?.reason, 'count-nouns-not-recognized');
+  assert.deepEqual(r.coverage.spans, ['45 Spezialisten']);
 
+  // With the listed count backed by the source, the document no longer reads
+  // as a clean pass: the unlisted count was never compared to anything.
   const dir = mkdtempSync(join(tmpdir(), 'fact-gap-de-'));
   const source = join(dir, 'cv.md');
   writeFileSync(source, 'Managed 45 specialists in 3 locations.');
   const ok = verifyFacts('Leitete 45 Spezialisten in 3 Standorten.', { ...BARE, sourcePaths: [source] });
-  assert.equal(ok.verdict, 'pass');
+  assert.equal(ok.verdict, 'warn');
   assert.deepEqual([...ok.invented], []);
-  assert.equal(ok.coverage, null);
+  assert.deepEqual(ok.coverage?.spans, ['45 Spezialisten']);
+});
+
+test('the partial-coverage warning stays out of English documents (#5125)', () => {
+  // An English count outside METRIC_NOUNS is common and was never reported;
+  // only a German recognised noun marks a document as German.
+  assert.equal(verifyFacts('Built 12 dashboards for 40 users.', BARE).coverage, null);
+  // 'posts' is English, so it does not mark a document as German either.
+  assert.equal(verifyFacts('Wrote 12 posts and ran 40 workshops for 9 cohorts.', BARE).coverage, null);
+  // A German document whose counts are all listed has nothing to report.
+  assert.equal(verifyFacts('Leitete 45 Mitarbeiter an 3 Standorten.', BARE).coverage, null);
 });
 
 test('German headcount, user, and engineering inflections fold to canonical nouns (#5125)', () => {
